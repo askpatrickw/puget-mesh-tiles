@@ -39,14 +39,28 @@ async function renderTileCompat(styleObj, z, x, y, opts = {}) {
   const stylePath = path.join(tmpDir, 'style.json');
   fs.writeFileSync(stylePath, JSON.stringify(styleObj));
   const outPng = path.join(tmpDir, 'tile.png');
-  const args = ['--style', stylePath, '--tile', `${z}/${x}/${y}`, '--output', outPng];
-  if (opts && opts.scale) args.push('--scale', String(opts.scale));
-  const run = spawnSync(bin, args, { stdio: ['ignore', 'inherit', 'inherit'], env: process.env });
-  if (run.error || run.status !== 0) {
-    throw run.error || new Error(`mbgl-render exited with code ${run.status}`);
+  const tryArgs = [];
+  // Known/guessed variants; try multiple in case of differing CLIs
+  tryArgs.push(['--style', stylePath, '--tile', `${z}/${x}/${y}`, '--output', outPng]);
+  tryArgs.push(['--style', stylePath, '--z', String(z), '--x', String(x), '--y', String(y), '--output', outPng]);
+  tryArgs.push([stylePath, String(z), String(x), String(y), outPng]);
+  tryArgs.push([stylePath, '--tile', `${z}/${x}/${y}`, outPng]);
+
+  for (const baseArgs of tryArgs) {
+    // Only pass scale when using the first two flag-based variants
+    const args = [...baseArgs];
+    if (opts && opts.scale && (baseArgs[0] === '--style')) {
+      // Attempt common flags for scale, ignore errors
+      args.push('--scale', String(opts.scale));
+    }
+    const run = spawnSync(bin, args, { stdio: ['ignore', 'inherit', 'inherit'], env: process.env });
+    if (!run.error && run.status === 0 && fs.existsSync(outPng)) {
+      const png = fs.readFileSync(outPng);
+      if (png && png.length > 0) return png;
+    }
   }
-  const png = fs.readFileSync(outPng);
-  return png;
+
+  throw new Error('mbgl-render CLI did not accept known arguments; please check @consbio/mbgl-renderer version');
 }
 
 function parseArgs() {
