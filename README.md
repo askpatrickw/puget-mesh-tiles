@@ -61,6 +61,27 @@ README.md                           # You are here
 
 ---
 
+```mermaid
+flowchart TD
+  A[puget_basin.geojson - Basin polygon WGS84] --> B{Workflow start}
+  B --> C[Download WA .osm.pbf]
+  B -->|INCLUDE_BC=true| D[Download BC .osm.pbf]
+  C & D --> E[osmium merge -> wa_bc.osm.pbf]
+  C -->|INCLUDE_BC=false| E2[Use wa.osm.pbf]
+
+  E --> F[osmium extract with polygon -> puget_basin.osm.pbf]
+  E2 --> F
+
+  F --> G[Planetiler -> vector.mbtiles]
+  G --> H[mbgl-renderer + tilelist -> z/x/y.png]
+  H --> I[package_and_split.sh -> split ZIPs + SHA256SUMS]
+  I --> J[(GitHub Release assets)]
+  J --> K[User extracts /tiles to SD]
+  K --> L[T-Deck / Meshcore reads tiles]
+```
+
+---
+
 ## Configuration knobs
 
 Override via workflow **inputs** or repository **variables**:
