@@ -1,0 +1,15 @@
+{
+  "name": "puget-mesh-tiles",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build and publish raster map tiles for Puget Sound Basin",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@consbio/mbgl-renderer": "github:consbio/mbgl-renderer"
+  }
+}
+

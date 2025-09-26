@@ -48,8 +48,9 @@ jobs:
         with:
           node-version: '18.x'
 
-      - name: Install mbgl-renderer
-        run: npm i -g @consbio/mbgl-renderer
+      - name: Install Node dependencies
+        run: |
+          npm install --no-audit --no-fund
 
       - name: Prepare folders
         run: |
