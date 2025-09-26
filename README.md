@@ -1,26 +1,33 @@
-# Puget Mesh — Offline Map Tiles (Starter Repo)
+# Puget Mesh — Offline Map Tiles
 
-This repository builds and **publishes split ZIPs of offline raster map tiles** covering the **Puget Sound Basin**
-for **Meshcore / T‑Deck** usage. Defaults are safe and redistributable (self-rendered from OSM data).
+This repository builds and **publishes split ZIPs of offline raster map tiles** covering the **Puget Sound Basin** for **Meshcore / T-Deck** usage.  
+Tiles are generated from OpenStreetMap extracts, clipped to the Basin polygon.
 
-> **Quick start**
->
-> 1. Create a new GitHub repo and push this starter content.
-> 2. Create a tag (e.g., `v0.1.0`) and push it, or manually run the workflow from the Actions tab.
-> 3. Download split ZIPs from the Release, extract to a microSD so you have `tiles/{z}/{x}/{y}.png` at the SD root.
-> 4. Insert into T‑Deck; Meshcore will pick up the `tiles/` folder automatically.
+---
+
+## Quick start
+
+1. Commit your Basin polygon to `./shapes/puget_basin.geojson`.  
+   - Format: GeoJSON, WGS84 (EPSG:4326).  
+   - Shapefile (`.shp` + sidecars) also supported if you prefer, but GeoJSON is leaner.  
+2. Push this repo to GitHub.  
+3. Run the **build-tiles** workflow (manually or on schedule).  
+4. Download split ZIPs from the Release, extract to a microSD so you have `tiles/{z}/{x}/{y}.png` at the SD root.  
+5. Insert into T-Deck; Meshcore will pick up the `tiles/` folder automatically.
 
 ---
 
 ## Defaults
 
-- **Approach**: self-generate from OSM data (Geofabrik, Washington-state extract).
-- **Zooms**: `z8–12` (regional + city-level). Tune later as storage/time allows.
-- **Area**: Puget Sound Basin polygon (buffered 10 km). Falls back to an approximate bounding polygon if ArcGIS is unreachable.
-- **Renderer**: headless **mbgl-renderer** using a minimal style JSON.
-- **Packaging**: split archives (`zip -s 2000m`) + SHA256 sums, uploaded as **Release assets**.
-
-> Note: For cross-border coverage, add **British Columbia** PBF later. This starter keeps first runs light and fast.
+- **Area**: Puget Sound Basin polygon from `./shapes/puget_basin.geojson` (+10 km buffer).  
+- **Sources**:  
+  - OSM extracts from Geofabrik:  
+    - Washington (always)  
+    - British Columbia (optional, toggle `INCLUDE_BC=true`)  
+- **Clipping**: `osmium extract` trims WA+BC to the Basin polygon (`puget_basin.osm.pbf`).  
+- **Tile builder**: Planetiler → vector MBTiles → raster tiles with `mbgl-renderer`.  
+- **Zooms**: `z8–12` (regional through city-level).  
+- **Packaging**: split ZIPs (`zip -s 2000m`) + `SHA256SUMS` → Release assets.
 
 ---
 
@@ -33,66 +40,66 @@ scripts/
   compute_tiles.py                  # Enumerate z/x/y tiles intersecting polygon via mercantile + shapely
   render_raster_tiles.js            # Use @consbio/mbgl-renderer to rasterize listed tiles
   package_and_split.sh              # Create split ZIPs + SHA256SUMS
+shapes/
+  puget_basin.geojson               # Committed Puget Basin polygon (required)
 styles/
   bright-min.json                   # Minimal MapLibre style; points to local vector MBTiles
 README.md                           # You are here
 ```
 
----
-
-## How it works
-
-1. **Load local basin polygon** → `basin.geojson`
-2. **Compute tiles** to render for each zoom tier → `tilelist_*.txt`
-3. **Build vector MBTiles** (Planetiler from OSM PBF) → `tiles/vector.mbtiles`
-4. **Rasterize** with `@consbio/mbgl-renderer` into `tiles/{z}/{x}/{y}.png`
-5. **Package & split** → `RELEASE_ASSETS/` then upload to the Release
-
-> The workflow uses **Washington** OSM extract only by default to keep runtime reasonable.
-> To add BC later, set `INCLUDE_BC=true` as an env/variable and ensure the runner has enough time/disk.
 
 ---
 
-## Legal & attribution
+## Workflow overview
 
-- Data © OpenStreetMap contributors (ODbL). Include attribution when you distribute.
-- Style is an in-repo minimal MapLibre style (no third-party tile servers).
-- **Do not** bulk-download from OSM public tile servers or commercial providers for redistribution.
+1. **Load local basin polygon** (`./shapes/puget_basin.geojson`) → `basin.geojson`.  
+2. **Download OSM extracts** (WA + optional BC).  
+3. **Merge + clip** with `osmium extract` to produce `puget_basin.osm.pbf`.  
+4. **Planetiler** converts PBF → `tiles/vector.mbtiles`.  
+5. **Rasterize** selected tiles → `tiles/{z}/{x}/{y}.png`.  
+6. **Package** split ZIPs + checksums → uploaded to the Release.
 
 ---
 
 ## Configuration knobs
 
-You can override these via workflow **inputs** or repository **variables**:
+Override via workflow **inputs** or repository **variables**:
 
-- `ZOOM_MIN` / `ZOOM_MAX` (default: 8 / 12)
-- `BASIN_BUFFER_KM` (default: 10)
-- `DATA_DIR` (default: `data/`)
-- `INCLUDE_BC` (default: `false` — set to `true` to fetch British Columbia PBF)
-- `STYLE_JSON` (default: `styles/bright-min.json`)
+- `ZOOM_MIN` / `ZOOM_MAX` (default: 8 / 12)  
+- `BASIN_BUFFER_KM` (default: 10)  
+- `INCLUDE_BC` (default: false)  
+- `STYLE_JSON` (default: `styles/bright-min.json`)  
 
 ---
 
 ## Local testing (optional)
 
-> **Geometry source**: commit one of the following to this repo and reference it via `--local` (default `./shapes/puget_basin.geojson`):
-> - GeoJSON (`.geojson`/`.json`) in WGS84
-> - ESRI Shapefile (`.shp` + sidecars `.shx`, `.dbf`, `.prj`)
+Dependencies: Python 3.10+, Node 18+, Java 17+, osmium-tool.
 
-You can run the scripts locally (Linux/macOS) if you install:
-- Python 3.10+: `pip install shapely mercantile requests pyproj`
-- Node 18+: `npm i -g @consbio/mbgl-renderer`
-- Java 17+: for Planetiler
-
-Then roughly:
+Example run:
 
 ```bash
-python3 scripts/fetch_basin_polygon.py --out basin.geojson --buffer-km 10
-python3 scripts/compute_tiles.py --geom basin.geojson --zmin 8 --zmax 12 --out tilelist_test.txt
-# Download WA PBF into data/wa.osm.pbf first (see workflow for URLs)
-# Build vector tiles with Planetiler (see workflow step) to tiles/vector.mbtiles
-node scripts/render_raster_tiles.js --style styles/bright-min.json --mbtiles tiles/vector.mbtiles --tilelist tilelist_test.txt --outdir tiles
+# 1. Ensure you have ./shapes/puget_basin.geojson committed.
+python3 scripts/fetch_basin_polygon.py --local ./shapes/puget_basin.geojson --out basin.geojson --buffer-km 10
+
+# 2. Download WA/BC and clip with osmium
+curl -L -o data/wa.osm.pbf https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf
+curl -L -o data/bc.osm.pbf https://download.geofabrik.de/north-america/canada/british-columbia-latest.osm.pbf
+osmium merge data/wa.osm.pbf data/bc.osm.pbf -o data/wa_bc.osm.pbf
+osmium extract --polygon ./shapes/puget_basin.geojson --strategy=complete_ways -o data/puget_basin.osm.pbf data/wa_bc.osm.pbf
+
+# 3. Build vector tiles
+java -Xmx8g -jar planetiler.jar --download=false --osm-path=data/puget_basin.osm.pbf --output=tiles/vector.mbtiles --min-zoom=8 --max-zoom=12 --bounds-file=basin.geojson
+
+# 4. Compute tile list
+python3 scripts/compute_tiles.py --geom basin.geojson --zmin 8 --zmax 12 --prefix tilelist
+
+# 5. Rasterize tiles
+node scripts/render_raster_tiles.js --style styles/bright-min.json --mbtiles tiles/vector.mbtiles --tilelist tilelist_all.txt --outdir tiles
+
+# 6. Package
 bash scripts/package_and_split.sh tiles RELEASE_ASSETS/test
+
 ```
 
 ---
