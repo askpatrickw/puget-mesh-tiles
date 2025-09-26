@@ -52,6 +52,11 @@ jobs:
         run: |
           npm install --no-audit --no-fund
 
+      - name: Install headless OpenGL libs (for renderer)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopengl0 libgl1 libglu1-mesa libosmesa6
+
       - name: Prepare folders
         run: |
           mkdir -p ${DATA_DIR} tiles RELEASE_ASSETS
@@ -118,6 +123,8 @@ jobs:
           python scripts/compute_tiles.py --geom basin.geojson --zmin ${ZOOM_MIN} --zmax ${ZOOM_MAX} --prefix tilelist
 
       - name: Rasterize tiles
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           node scripts/render_raster_tiles.js \
             --style ${STYLE_JSON} \

@@ -97,6 +97,14 @@ Override via workflow **inputs** or repository **variables**:
 
 Dependencies: Python 3.10+, Node 18+, Java 21+, osmium-tool.
 
+On Linux for raster rendering, install headless OpenGL libs:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libopengl0 libgl1 libglu1-mesa libosmesa6
+export LIBGL_ALWAYS_SOFTWARE=1
+```
+
 Example run:
 
 ```bash
