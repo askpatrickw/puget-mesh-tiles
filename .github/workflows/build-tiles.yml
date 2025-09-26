@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 360  # 6h on hosted runners
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
       - name: Install headless OpenGL libs (for renderer)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libopengl0 libgl1 libglu1-mesa libosmesa6
+          sudo apt-get install -y libopengl0 libgl1 libglu1-mesa libosmesa6 libpng16-16
 
       - name: Prepare folders
         run: |
