@@ -40,13 +40,10 @@ async function renderTileCompat(styleObj, z, x, y, opts = {}) {
   fs.writeFileSync(stylePath, JSON.stringify(styleObj));
   const outPng = path.join(tmpDir, 'tile.png');
   const candidates = [
-    { args: ['--tiles', `${z}/${x}/${y}`, stylePath, '-o', outPng], mode: 'file' },
-    { args: ['--tiles', `${z}/${x}/${y}`, stylePath, '--output', outPng], mode: 'file' },
-    { args: [stylePath, '--tiles', `${z}/${x}/${y}`, '-o', outPng], mode: 'file' },
+    { args: [stylePath, '--tiles', `${z}/${x}/${y}`], mode: 'stdout' },
+    { args: ['--tiles', `${z}/${x}/${y}`, stylePath], mode: 'stdout' },
     { args: [stylePath, String(z), String(x), String(y)], mode: 'stdout' },
     { args: [stylePath, `${z}/${x}/${y}`], mode: 'stdout' },
-    { args: [stylePath, String(z), String(x), String(y), outPng], mode: 'file' },
-    { args: [stylePath, `${z}/${x}/${y}`, outPng], mode: 'file' },
   ];
 
   for (const { args, mode } of candidates) {
@@ -80,15 +77,17 @@ async function main() {
     process.exit(2);
   }
   const styleJson = JSON.parse(fs.readFileSync(style, 'utf8'));
-  // Inject local MBTiles path into style (replace token "MBTILES_PATH" if present)
-  const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, path.resolve(mbtiles));
+  // Inject MBTiles file name (not absolute path) to work with tilePath
+  const mbtilesName = path.basename(path.resolve(mbtiles));
+  const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, mbtilesName);
   const styleObj = JSON.parse(styleStr);
 
   const lines = fs.readFileSync(tilelist, 'utf8').trim().split(/\r?\n/);
+  const tilePath = path.dirname(path.resolve(mbtiles));
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
-    const png = await renderTileCompat(styleObj, z, x, y, { scale: 1 });
+    const png = await renderTileCompat(styleObj, z, x, y, { scale: 1, tilePath });
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);
