@@ -110,7 +110,7 @@ osmium merge data/wa.osm.pbf data/bc.osm.pbf -o data/wa_bc.osm.pbf
 osmium extract --polygon ./shapes/puget_basin.geojson --strategy=complete_ways -o data/puget_basin.osm.pbf data/wa_bc.osm.pbf
 
 # 3. Build vector tiles
-java -Xmx8g -jar planetiler.jar --download=false --osm-path=data/puget_basin.osm.pbf --output=tiles/vector.mbtiles --min-zoom=8 --max-zoom=12 --bounds-file=basin.geojson
+java -Xmx8g -jar planetiler.jar --download=true --osm-path=data/puget_basin.osm.pbf --output=tiles/vector.mbtiles --min-zoom=8 --max-zoom=12 --bounds-file=basin.geojson
 
 # 4. Compute tile list
 python3 scripts/compute_tiles.py --geom basin.geojson --zmin 8 --zmax 12 --prefix tilelist

@@ -107,7 +107,7 @@ jobs:
           JAVA_TOOL_OPTIONS: "-Xmx6g"
         run: |
           java -jar planetiler.jar \
-            --download=false \
+            --download=true \
             --osm-path=${DATA_DIR}/puget_basin.osm.pbf \
             --output=tiles/vector.mbtiles \
             --min-zoom=${ZOOM_MIN} --max-zoom=${ZOOM_MAX} \
