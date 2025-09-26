@@ -7,8 +7,47 @@
  *        --tilelist tilelist_all.txt --outdir tiles
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { renderTile } = require('@consbio/mbgl-renderer');
+const { spawnSync } = require('child_process');
+
+// Try to load renderTile from the module, but be flexible about export shapes
+function getRenderTileFromModule() {
+  try {
+    const mod = require('@consbio/mbgl-renderer');
+    if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
+    if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
+    if (typeof mod === 'function') return mod; // some builds export the function directly
+  } catch (e) {
+    // ignore; will fall back to CLI
+  }
+  return null;
+}
+
+async function renderTileCompat(styleObj, z, x, y, opts = {}) {
+  const impl = getRenderTileFromModule();
+  if (impl) {
+    // Use the JS API
+    const res = impl(styleObj, z, x, y, opts);
+    return res && typeof res.then === 'function' ? await res : res;
+  }
+
+  // Fallback: call CLI from node_modules/.bin/mbgl-render
+  const bin = path.join(process.cwd(), 'node_modules', '.bin', process.platform === 'win32' ? 'mbgl-render.cmd' : 'mbgl-render');
+  // Write a temporary style file with injected mbtiles path already applied
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mbgl-render-'));
+  const stylePath = path.join(tmpDir, 'style.json');
+  fs.writeFileSync(stylePath, JSON.stringify(styleObj));
+  const outPng = path.join(tmpDir, 'tile.png');
+  const args = ['--style', stylePath, '--tile', `${z}/${x}/${y}`, '--output', outPng];
+  if (opts && opts.scale) args.push('--scale', String(opts.scale));
+  const run = spawnSync(bin, args, { stdio: ['ignore', 'inherit', 'inherit'], env: process.env });
+  if (run.error || run.status !== 0) {
+    throw run.error || new Error(`mbgl-render exited with code ${run.status}`);
+  }
+  const png = fs.readFileSync(outPng);
+  return png;
+}
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -34,7 +73,7 @@ async function main() {
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
-    const png = await renderTile(styleObj, z, x, y, { scale: 1 });
+    const png = await renderTileCompat(styleObj, z, x, y, { scale: 1 });
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);
