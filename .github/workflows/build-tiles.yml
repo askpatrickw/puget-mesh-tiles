@@ -1,0 +1,137 @@
+name: build-tiles
+
+on:
+  workflow_dispatch:
+    inputs:
+      zoom_min: { description: "Minimum zoom", required: false, default: "8" }
+      zoom_max: { description: "Maximum zoom", required: false, default: "12" }
+      include_bc: { description: "Include British Columbia PBF", required: false, default: "false" }
+      basin_buffer_km: { description: "Buffer around Basin polygon (km)", required: false, default: "10" }
+  schedule:
+    - cron: "0 16 1 * *" # 08:00 PT monthly
+
+permissions:
+  contents: write  # required to create releases and upload assets
+
+env:
+  ZOOM_MIN: ${{ inputs.zoom_min || '8' }}
+  ZOOM_MAX: ${{ inputs.zoom_max || '12' }}
+  INCLUDE_BC: ${{ inputs.include_bc || 'false' }}
+  BASIN_BUFFER_KM: ${{ inputs.basin_buffer_km || '10' }}
+  DATA_DIR: data
+  STYLE_JSON: styles/bright-min.json
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6h on hosted runners
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install shapely mercantile pyproj pyshp
+
+      - name: Install osmium-tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Install mbgl-renderer
+        run: npm i -g @consbio/mbgl-renderer
+
+      - name: Prepare folders
+        run: |
+          mkdir -p ${DATA_DIR} tiles RELEASE_ASSETS
+
+      - name: Load Puget Sound Basin polygon (local)
+        run: |
+          python scripts/fetch_basin_polygon.py --local ./shapes/puget_basin.geojson --out basin.geojson --buffer-km ${BASIN_BUFFER_KM}
+
+      - name: Download OSM extracts (WA + optional BC, conditional)
+        run: |
+          set -e
+          mkdir -p ${DATA_DIR}
+          # Conditional re-download if server has a newer file
+          curl -L -z ${DATA_DIR}/wa.osm.pbf -o ${DATA_DIR}/wa.osm.pbf \
+            https://download.geofabrik.de/north-america/us/washington-latest.osm.pbf
+          if [ "${INCLUDE_BC}" = "true" ]; then
+            curl -L -z ${DATA_DIR}/bc.osm.pbf -o ${DATA_DIR}/bc.osm.pbf \
+              https://download.geofabrik.de/north-america/canada/british-columbia-latest.osm.pbf
+          fi
+
+      - name: Merge WA+BC (if enabled)
+        run: |
+          set -e
+          if [ "${INCLUDE_BC}" = "true" ]; then
+            osmium merge ${DATA_DIR}/wa.osm.pbf ${DATA_DIR}/bc.osm.pbf -o ${DATA_DIR}/wa_bc.osm.pbf
+            echo "MERGED_PBF=${DATA_DIR}/wa_bc.osm.pbf" >> $GITHUB_ENV
+          else
+            echo "MERGED_PBF=${DATA_DIR}/wa.osm.pbf" >> $GITHUB_ENV
+          fi
+
+      - name: Clip to Puget Basin polygon
+        run: |
+          set -e
+          # Keep complete ways so roads/water don’t get cut at the edge.
+          osmium extract \
+            --polygon ./shapes/puget_basin.geojson \
+            --strategy=complete_ways \
+            -o ${DATA_DIR}/puget_basin.osm.pbf \
+            ${MERGED_PBF}
+
+      - name: Set up Java (Planetiler)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download Planetiler
+        run: |
+          curl -L -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+
+      - name: Build vector tiles (MBTiles) from OSM (Basin-clipped)
+        env:
+          JAVA_TOOL_OPTIONS: "-Xmx6g"
+        run: |
+          java -jar planetiler.jar \
+            --download=false \
+            --osm-path=${DATA_DIR}/puget_basin.osm.pbf \
+            --output=tiles/vector.mbtiles \
+            --min-zoom=${ZOOM_MIN} --max-zoom=${ZOOM_MAX} \
+            --bounds-file=basin.geojson
+
+      - name: Compute tile lists per zoom
+        run: |
+          python scripts/compute_tiles.py --geom basin.geojson --zmin ${ZOOM_MIN} --zmax ${ZOOM_MAX} --prefix tilelist
+
+      - name: Rasterize tiles
+        run: |
+          node scripts/render_raster_tiles.js \
+            --style ${STYLE_JSON} \
+            --mbtiles tiles/vector.mbtiles \
+            --tilelist tilelist_all.txt \
+            --outdir tiles
+
+      - name: Package and split
+        run: |
+          bash scripts/package_and_split.sh tiles RELEASE_ASSETS/puget-mesh-tiles
+
+      - name: Create release (if tag) or upload to latest
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: false
+          files: RELEASE_ASSETS/puget-mesh-tiles/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
