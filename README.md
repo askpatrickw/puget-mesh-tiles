@@ -95,7 +95,7 @@ Override via workflow **inputs** or repository **variables**:
 
 ## Local testing (optional)
 
-Dependencies: Python 3.10+, Node 18+, Java 17+, osmium-tool.
+Dependencies: Python 3.10+, Node 18+, Java 21+, osmium-tool.
 
 Example run:
 
