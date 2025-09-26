@@ -11,6 +11,9 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
+let cachedModuleRender = null;
+let cachedCliTemplate = null; // function (stylePath, z,x,y, env) -> Buffer
+
 // Try to load renderTile from the module, but be flexible about export shapes
 function getRenderTileFromModule() {
   try {
@@ -23,42 +26,85 @@ function getRenderTileFromModule() {
   }
   return null;
 }
-
 async function renderTileCompat(styleObj, z, x, y, opts = {}) {
-  const impl = getRenderTileFromModule();
-  if (impl) {
-    // Use the JS API
-    const res = impl(styleObj, z, x, y, opts);
-    return res && typeof res.then === 'function' ? await res : res;
+  // Prefer module API once per process
+  if (cachedModuleRender === null) {
+    cachedModuleRender = getRenderTileFromModule();
+  }
+  if (typeof cachedModuleRender === 'function') {
+    try {
+      const res = cachedModuleRender(styleObj, z, x, y, opts);
+      return res && typeof res.then === 'function' ? await res : res;
+    } catch (e) {
+      // If module fails (e.g., tilePath issues), fall back to CLI for the remainder
+      cachedModuleRender = undefined;
+    }
   }
 
-  // Fallback: call CLI from node_modules/.bin/mbgl-render
+  // Fallback: use CLI. Detect and cache a working invocation once.
+  if (cachedCliTemplate === null) {
+    cachedCliTemplate = detectCliTemplate(styleObj, opts.tilePath);
+  }
+  if (!cachedCliTemplate) {
+    throw new Error('mbgl-render CLI not detected; unsupported arguments');
+  }
+  return cachedCliTemplate(styleObj, z, x, y, opts.tilePath);
+}
+
+function detectCliTemplate(styleObj, tilePath) {
   const bin = path.join(process.cwd(), 'node_modules', '.bin', process.platform === 'win32' ? 'mbgl-render.cmd' : 'mbgl-render');
-  // Write a temporary style file with injected mbtiles path already applied
+  // Prepare one temporary dir + style.json reused for probes
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mbgl-render-'));
   const stylePath = path.join(tmpDir, 'style.json');
   fs.writeFileSync(stylePath, JSON.stringify(styleObj));
   const outPng = path.join(tmpDir, 'tile.png');
-  const candidates = [
-    { args: [stylePath, '--tiles', `${z}/${x}/${y}`], mode: 'stdout' },
-    { args: ['--tiles', `${z}/${x}/${y}`, stylePath], mode: 'stdout' },
-    { args: [stylePath, String(z), String(x), String(y)], mode: 'stdout' },
-    { args: [stylePath, `${z}/${x}/${y}`], mode: 'stdout' },
+  const z=8, x=0, y=0; // harmless probe tile
+  const envBase = { ...process.env, TILE_PATH: tilePath || '', tilePath: tilePath || '', MBTILES_DIR: tilePath || '' };
+
+  // Candidate builders (return args array)
+  const build = {
+    positionalWithImage: (extra=[]) => [stylePath, String(z), String(x), String(y), outPng, ...extra],
+  };
+
+  const variants = [
+    build.positionalWithImage(['--tilePath', tilePath || '']),
+    build.positionalWithImage(['--tile-path', tilePath || '']),
+    build.positionalWithImage(['--tilepath', tilePath || '']),
+    build.positionalWithImage(['-p', tilePath || '']),
+    build.positionalWithImage(['-t', tilePath || '']),
+    build.positionalWithImage(),
   ];
 
-  for (const { args, mode } of candidates) {
-    const run = spawnSync(bin, args, { stdio: mode === 'stdout' ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'inherit', 'inherit'], env: process.env, encoding: mode === 'stdout' ? 'buffer' : undefined });
-    if (run.error || run.status !== 0) continue;
-    if (mode === 'file' && fs.existsSync(outPng)) {
-      const png = fs.readFileSync(outPng);
-      if (png && png.length > 0) return png;
-    }
-    if (mode === 'stdout' && run.stdout && run.stdout.length > 0) {
-      return Buffer.from(run.stdout);
+  for (const args of variants) {
+    const run = spawnSync(bin, args, { stdio: ['ignore', 'inherit', 'inherit'], env: envBase });
+    if (!run.error && run.status === 0 && fs.existsSync(outPng)) {
+      return (styleObj2, Z, X, Y, tilePath2) => {
+        // Write style again in case styleObj changed
+        fs.writeFileSync(stylePath, JSON.stringify(styleObj2));
+        // Rebuild args with actual tile and tilePath
+        const finalArgs = args.slice();
+        finalArgs[1] = String(Z);
+        finalArgs[2] = String(X);
+        finalArgs[3] = String(Y);
+        finalArgs[4] = outPng;
+        // Update any tilePath occurrences
+        for (let i = 0; i < finalArgs.length; i++) {
+          if (['--tilePath','--tile-path','--tilepath','-p','-t'].includes(finalArgs[i])) {
+            if (i+1 < finalArgs.length) finalArgs[i+1] = tilePath2 || '';
+          }
+        }
+        const env = { ...envBase, TILE_PATH: tilePath2 || '', tilePath: tilePath2 || '', MBTILES_DIR: tilePath2 || '' };
+        const run2 = spawnSync(bin, finalArgs, { stdio: ['ignore', 'inherit', 'inherit'], env });
+        if (run2.error || run2.status !== 0) {
+          throw run2.error || new Error(`mbgl-render failed (${run2.status})`);
+        }
+        const png = fs.readFileSync(outPng);
+        if (!png || png.length === 0) throw new Error('mbgl-render produced no output');
+        return png;
+      };
     }
   }
-
-  throw new Error('mbgl-render CLI did not accept known arguments; please check @consbio/mbgl-renderer version');
+  return null;
 }
 
 function parseArgs() {
@@ -84,6 +130,18 @@ async function main() {
 
   const lines = fs.readFileSync(tilelist, 'utf8').trim().split(/\r?\n/);
   const tilePath = path.dirname(path.resolve(mbtiles));
+  // Probe once up front to select rendering strategy and validate environment
+  if (lines.length > 0) {
+    const [pz, px, py] = lines[0].split(',').map(s => parseInt(s, 10));
+    try {
+      await renderTileCompat(styleObj, pz, px, py, { scale: 1, tilePath });
+      // success, continue
+    } catch (e) {
+      console.error('Renderer initialization failed:', e && e.message ? e.message : e);
+      process.exit(1);
+    }
+  }
+
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
