@@ -14,8 +14,11 @@ let cachedModuleRender = null;
 function getRenderTileFromModule() {
   try {
     const mod = require('@consbio/mbgl-renderer');
+    // Try common export shapes
     if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
+    if (mod && typeof mod.render === 'function') return mod.render;
     if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
+    if (mod && mod.default && typeof mod.default.render === 'function') return mod.default.render;
     if (typeof mod === 'function') return mod; // some builds export the function directly
   } catch (e) {
     // ignore; will fall back to CLI
@@ -49,8 +52,9 @@ async function main() {
     process.exit(2);
   }
   const styleJson = JSON.parse(fs.readFileSync(style, 'utf8'));
-  // Inject absolute MBTiles path so tilePath is not required by the renderer
+  // Inject absolute MBTiles path and compute tile directory
   const absMbtiles = path.resolve(mbtiles);
+  const tileDir = path.dirname(absMbtiles);
   const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, absMbtiles);
   const styleObj = JSON.parse(styleStr);
 
@@ -59,7 +63,7 @@ async function main() {
   if (lines.length > 0) {
     const [pz, px, py] = lines[0].split(',').map(s => parseInt(s, 10));
     try {
-      await renderTileCompat(styleObj, pz, px, py, { scale: 1 });
+      await renderTileCompat(styleObj, pz, px, py, { scale: 1, tilePath: tileDir });
     } catch (e) {
       console.error('Renderer initialization failed:', e && e.message ? e.message : e);
       process.exit(1);
@@ -69,7 +73,7 @@ async function main() {
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
-    const png = await renderTileCompat(styleObj, z, x, y, { scale: 1 });
+    const png = await renderTileCompat(styleObj, z, x, y, { scale: 1, tilePath: tileDir });
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);
