@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 function getRenderFn() {
-  const mod = require('@consbio/mbgl-renderer');
+  const mod = require('mbgl-renderer');
   if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
   if (mod && typeof mod.render === 'function') return mod.render;
   if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
