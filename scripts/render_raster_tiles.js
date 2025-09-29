@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Rasterize a list of tiles (z,x,y) to PNGs using @consbio/mbgl-renderer.
+ * Rasterize a list of tiles (z,x,y) to PNGs using the Node API from @consbio/mbgl-renderer.
  *
  * Example:
  *   node render_raster_tiles.js --style styles/bright-min.json --mbtiles tiles/vector.mbtiles \
@@ -8,32 +8,21 @@
  */
 const fs = require('fs');
 const path = require('path');
-let cachedModuleRender = null;
 
-// Try to load renderTile from the module, but be flexible about export shapes
-function getRenderTileFromModule() {
-  try {
-    const mod = require('@consbio/mbgl-renderer');
-    // Try common export shapes
-    if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
-    if (mod && typeof mod.render === 'function') return mod.render;
-    if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
-    if (mod && mod.default && typeof mod.default.render === 'function') return mod.default.render;
-    if (typeof mod === 'function') return mod; // some builds export the function directly
-  } catch (e) {
-    // ignore; will fall back to CLI
-  }
-  return null;
+function getRenderFn() {
+  const mod = require('@consbio/mbgl-renderer');
+  if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
+  if (mod && typeof mod.render === 'function') return mod.render;
+  if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
+  if (mod && mod.default && typeof mod.default.render === 'function') return mod.default.render;
+  throw new Error('mbgl-renderer Node API not found (renderTile/render)');
 }
-async function renderTileCompat(styleObj, z, x, y, opts = {}) {
-  if (cachedModuleRender === null) {
-    cachedModuleRender = getRenderTileFromModule();
-  }
-  if (typeof cachedModuleRender !== 'function') {
-    throw new Error('mbgl-renderer Node API unavailable (renderTile not found)');
-  }
-  const res = cachedModuleRender(styleObj, z, x, y, opts);
-  return res && typeof res.then === 'function' ? await res : res;
+
+function loadStyleWithMbtilesBasename(styleJsonPath, mbtilesAbsPath) {
+  const styleJson = JSON.parse(fs.readFileSync(styleJsonPath, 'utf8'));
+  const basename = path.basename(mbtilesAbsPath);
+  const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, basename);
+  return JSON.parse(styleStr);
 }
 
 function parseArgs() {
@@ -51,29 +40,31 @@ async function main() {
     console.error("Usage: --style <style.json> --mbtiles <vector.mbtiles> --tilelist <file> --outdir <dir>");
     process.exit(2);
   }
-  const styleJson = JSON.parse(fs.readFileSync(style, 'utf8'));
-  // Inject absolute MBTiles path and compute tile directory
   const absMbtiles = path.resolve(mbtiles);
-  const tileDir = path.dirname(absMbtiles);
-  const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, absMbtiles);
-  const styleObj = JSON.parse(styleStr);
+  const tilePath = path.dirname(absMbtiles);
+  const styleObj = loadStyleWithMbtilesBasename(style, absMbtiles);
 
   const lines = fs.readFileSync(tilelist, 'utf8').trim().split(/\r?\n/);
-  // Probe once up front to validate environment
-  if (lines.length > 0) {
-    const [pz, px, py] = lines[0].split(',').map(s => parseInt(s, 10));
-    try {
-      await renderTileCompat(styleObj, pz, px, py, { scale: 1, tilePath: tileDir });
-    } catch (e) {
-      console.error('Renderer initialization failed:', e && e.message ? e.message : e);
-      process.exit(1);
-    }
+  if (lines.length === 0) {
+    console.error('Tilelist is empty');
+    process.exit(2);
+  }
+
+  const [pz, px, py] = lines[0].split(',').map(s => parseInt(s, 10));
+  let renderTile;
+  try {
+    renderTile = getRenderFn();
+    // Probe one tile
+    await Promise.resolve(renderTile(styleObj, pz, px, py, { tilePath, scale: 1 }));
+  } catch (e) {
+    console.error('Renderer initialization failed:', e && e.message ? e.message : e);
+    process.exit(1);
   }
 
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
-    const png = await renderTileCompat(styleObj, z, x, y, { scale: 1, tilePath: tileDir });
+    const png = await Promise.resolve(renderTile(styleObj, z, x, y, { tilePath, scale: 1 }));
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);
