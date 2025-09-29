@@ -31,8 +31,10 @@ function tileBBox(z, x, y) {
 
 function loadStyleWithMbtilesBasename(styleJsonPath, mbtilesAbsPath) {
   const styleJson = JSON.parse(fs.readFileSync(styleJsonPath, 'utf8'));
+  // mbgl-renderer expects service name (without .mbtiles) in URLs like mbtiles://<service>
   const basename = path.basename(mbtilesAbsPath);
-  const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, basename);
+  const serviceName = basename.replace(/\.mbtiles$/i, '');
+  const styleStr = JSON.stringify(styleJson).replace(/MBTILES_PATH/g, serviceName);
   return JSON.parse(styleStr);
 }
 
