@@ -51,10 +51,7 @@ jobs:
           node-version: '18.x'
 
       - name: Install Node dependencies
-        env:
-          npm_config_build_from_source: "true"   # Force rebuild if prebuild missing
-        run: |
-          npm ci --loglevel=verbose
+        run: npm ci
 
       - name: Diagnose mbgl-renderer install
         env:
