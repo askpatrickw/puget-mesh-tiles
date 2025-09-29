@@ -41,7 +41,7 @@ jobs:
       - name: Install osmium-tool and OpenGL Libs
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool libopengl0 libgl1 libglu1-mesa libosmesa6 libpng16-16 \
+          sudo apt-get install -y osmium-tool libopengl0 libgl1 libglu1-mesa libosmesa6 libpng16-16 xvfb \
             libcurl4-openssl-dev libjpeg-dev libpng-dev zlib1g-dev libuv1-dev \
             libgl1-mesa-dev libglu1-mesa-dev libosmesa6 mesa-common-dev
 
@@ -129,7 +129,7 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
-          node scripts/render_raster_tiles.js \
+          xvfb-run -a node scripts/render_raster_tiles.js \
             --style ${STYLE_JSON} \
             --mbtiles tiles/vector.mbtiles \
             --tilelist tilelist_all.txt \
