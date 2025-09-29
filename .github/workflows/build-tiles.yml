@@ -38,10 +38,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install shapely mercantile pyproj pyshp
 
-      - name: Install osmium-tool
+      - name: Install osmium-tool and OpenGL Libs
         run: |
           sudo apt-get update
-          sudo apt-get install -y osmium-tool
+          sudo apt-get install -y osmium-tool libopengl0 libgl1 libglu1-mesa libosmesa6 libpng16-16 \
+            libcurl4-openssl-dev libjpeg-dev libpng-dev zlib1g-dev libuv1-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libosmesa6 mesa-common-dev
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -49,13 +51,17 @@ jobs:
           node-version: '18.x'
 
       - name: Install Node dependencies
+        env:
+          npm_config_build_from_source: "true"   # Force rebuild if prebuild missing
         run: |
-          npm install --no-audit --no-fund
+          npm ci --loglevel=verbose
 
-      - name: Install headless OpenGL libs (for renderer)
+      - name: Diagnose mbgl-renderer install
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libopengl0 libgl1 libglu1-mesa libosmesa6 libpng16-16
+          ls -l node_modules/mbgl-renderer/build/Release || true
+          node -e "console.log('Node',process.version);try{console.log(require('mbgl-renderer'));}catch(e){console.error(e);process.exit(1)}"
 
       - name: Prepare folders
         run: |
