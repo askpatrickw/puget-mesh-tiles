@@ -11,11 +11,22 @@ const path = require('path');
 
 function getRenderFn() {
   const mod = require('mbgl-renderer');
-  if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
+  if (typeof mod === 'function') return mod; // default export is render()
   if (mod && typeof mod.render === 'function') return mod.render;
-  if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
+  if (mod && typeof mod.renderTile === 'function') return mod.renderTile;
+  if (mod && mod.default && typeof mod.default === 'function') return mod.default;
   if (mod && mod.default && typeof mod.default.render === 'function') return mod.default.render;
-  throw new Error('mbgl-renderer Node API not found (renderTile/render)');
+  if (mod && mod.default && typeof mod.default.renderTile === 'function') return mod.default.renderTile;
+  throw new Error('mbgl-renderer Node API not found (render or renderTile)');
+}
+
+function tileBBox(z, x, y) {
+  const n = Math.pow(2, z);
+  const lonLeft = (x / n) * 360 - 180;
+  const lonRight = ((x + 1) / n) * 360 - 180;
+  const latTop = (180 / Math.PI) * Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
+  const latBottom = (180 / Math.PI) * Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
+  return [lonLeft, latBottom, lonRight, latTop];
 }
 
 function loadStyleWithMbtilesBasename(styleJsonPath, mbtilesAbsPath) {
@@ -51,11 +62,12 @@ async function main() {
   }
 
   const [pz, px, py] = lines[0].split(',').map(s => parseInt(s, 10));
-  let renderTile;
+  let renderFn;
   try {
-    renderTile = getRenderFn();
-    // Probe one tile
-    await Promise.resolve(renderTile(styleObj, pz, px, py, { tilePath, scale: 1 }));
+    renderFn = getRenderFn();
+    // Probe one tile by rendering a 256x256 image for that tile's bounds
+    const bounds = tileBBox(pz, px, py);
+    await Promise.resolve(renderFn(styleObj, 256, 256, { bounds, ratio: 1, tilePath }));
   } catch (e) {
     console.error('Renderer initialization failed:', e && e.message ? e.message : e);
     process.exit(1);
@@ -64,7 +76,8 @@ async function main() {
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
-    const png = await Promise.resolve(renderTile(styleObj, z, x, y, { tilePath, scale: 1 }));
+    const bounds = tileBBox(z, x, y);
+    const png = await Promise.resolve(renderFn(styleObj, 256, 256, { bounds, ratio: 1, tilePath }));
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);
