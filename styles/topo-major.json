@@ -74,16 +74,60 @@
       "paint": { "line-color": "#777", "line-width": 0.6 }
     },
 
+    { "id": "boundary-country-casing",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "boundary",
+      "minzoom": 6,
+      "filter": ["all", ["==", ["get", "admin_level"], 2], ["!", ["get", "maritime"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#ebe9e3",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.8, 10, 3.4, 12, 4.2],
+        "line-opacity": 1.0
+      }
+    },
+
     { "id": "boundary-country",
       "type": "line",
       "source": "vector",
       "source-layer": "boundary",
-      "minzoom": 8,
+      "minzoom": 6,
       "filter": ["all", ["==", ["get", "admin_level"], 2], ["!", ["get", "maritime"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
       "paint": {
-        "line-color": "#9aa0a6",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 12, 1.0],
-        "line-dasharray": [3, 2]
+        "line-color": "#5b5f66",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.4, 10, 1.8, 12, 2.2],
+        "line-opacity": 1.0
+      }
+    },
+
+    { "id": "boundary-state-casing",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "boundary",
+      "minzoom": 8,
+      "filter": ["all", ["==", ["get", "admin_level"], 4], ["!", ["get", "maritime"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#ebe9e3",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.2, 10, 2.8, 12, 3.4],
+        "line-opacity": 1.0
+      }
+    },
+
+    { "id": "boundary-state",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "boundary",
+      "minzoom": 8,
+      "filter": ["all", ["==", ["get", "admin_level"], 4], ["!", ["get", "maritime"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#6b7280",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1.0, 10, 1.4, 12, 1.8],
+        "line-dasharray": [3, 2],
+        "line-opacity": 1.0
       }
     },
 

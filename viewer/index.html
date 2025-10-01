@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Puget Mesh — Tile Viewer</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="anonymous"
+    />
+    <style>
+      html, body { height: 100%; margin: 0; }
+      #map { height: 100%; }
+      .controls {
+        position: absolute; z-index: 1000; top: 8px; left: 8px;
+        background: rgba(255,255,255,0.9); padding: 6px 8px; border-radius: 4px;
+        font: 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      }
+      .controls label { margin-right: 6px; }
+      .coords { position:absolute; bottom:6px; left:8px; z-index:1000; background:rgba(255,255,255,0.8); padding:2px 6px; border-radius:3px; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div class="controls">
+      <label>Min zoom <input id="minz" type="number" min="0" max="22" value="8" style="width:4em"></label>
+      <label>Max zoom <input id="maxz" type="number" min="0" max="22" value="12" style="width:4em"></label>
+      <button id="apply">Apply</button>
+      <span style="margin-left:8px; color:#666">Tiles path: <code>../tiles/{z}/{x}/{y}.png</code></span>
+    </div>
+    <div class="coords" id="coords">&nbsp;</div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin="anonymous"></script>
+    <script>
+      // Defaults for this repo's outputs
+      let minZoom = 8;
+      let maxZoom = 12;
+
+      const map = L.map('map', {
+        center: [47.6, -122.33], // Seattle fallback
+        zoom: 9,
+        zoomControl: true,
+        worldCopyJump: true
+      });
+
+      let layer = L.tileLayer('../tiles/{z}/{x}/{y}.png', {
+        minZoom, maxZoom, tileSize: 256, noWrap: true,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Fit to basin.geojson if available, else puget_basin.geojson
+      async function fitToBasin() {
+        const candidates = ['../basin.geojson', '../shapes/puget_basin.geojson'];
+        for (const url of candidates) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const gj = await res.json();
+            const g = L.geoJSON(gj);
+            const b = g.getBounds();
+            if (b.isValid()) { map.fitBounds(b.pad(0.05)); return; }
+          } catch (e) { /* try next */ }
+        }
+      }
+      fitToBasin();
+
+      // Allow adjusting zoom bounds at runtime
+      const minzEl = document.getElementById('minz');
+      const maxzEl = document.getElementById('maxz');
+      const applyBtn = document.getElementById('apply');
+      applyBtn.addEventListener('click', () => {
+        minZoom = parseInt(minzEl.value, 10);
+        maxZoom = parseInt(maxzEl.value, 10);
+        map.removeLayer(layer);
+        layer = L.tileLayer('../tiles/{z}/{x}/{y}.png', {
+          minZoom, maxZoom, tileSize: 256, noWrap: true,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+      });
+
+      // Show mouse coords
+      const coordsEl = document.getElementById('coords');
+      map.on('mousemove', (e) => {
+        coordsEl.textContent = `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}  |  z ${map.getZoom()}`;
+      });
+    </script>
+  </body>
+  </html>
+

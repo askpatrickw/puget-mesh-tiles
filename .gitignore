@@ -386,5 +386,7 @@ vite.config.ts.timestamp-*
 
 # Output folder when testing
 .artifacts/
+# Local tiles folder for testing with viewer.html
+tiles/
 # Local glyph cache for offline rasterization
 glyphs/

@@ -19,7 +19,7 @@ Tiles are generated from OpenStreetMap extracts, clipped to the Basin polygon.
 
 ## Defaults
 
-- **Area**: Puget Sound Basin polygon from `./shapes/puget_basin.geojson` (+10 km buffer).
+- **Area**: Puget Sound Basin polygon from `./shapes/puget_basin.geojson` + the configured buffer.
 - **Sources**:
   - OSM extracts from Geofabrik:
     - Washington (always)
@@ -89,7 +89,7 @@ Override via workflow **inputs** or repository **variables**:
 
 - `ZOOM_MIN` / `ZOOM_MAX` (default: 8 / 12)
 - `BASIN_BUFFER_KM` (default: 10)
-- `INCLUDE_BC` (default: false)
+- `INCLUDE_BC` (default: true)
 - `STYLE_JSON` (default: `styles/bright-min.json`)
 
 ---
@@ -185,3 +185,24 @@ bash scripts/package_and_split.sh tiles RELEASE_ASSETS/test
 - **First pipeline run** can take a while on GitHub-hosted runners, especially at higher zooms.
 - If you need `z13–14` or cross-border coverage, consider a **self-hosted runner** with more CPU/RAM and a longer timeout.
 - The provided style is intentionally minimal; you may swap it for a richer OpenMapTiles-compatible style once you validate the flow.
+
+---
+
+## Quick viewer (Leaflet)
+
+To preview your rendered raster tiles like an app:
+
+1. Ensure you have `tiles/{z}/{x}/{y}.png` in the repo (either built locally or extracted from a Release).
+2. Start a local server at the repo root:
+
+   ```bash
+   python3 -m http.server 8000
+   ```
+
+3. Open the viewer in a browser: `http://localhost:8000/viewer/`.
+
+Notes:
+
+- The viewer targets `tiles/` relative to the repo root and will try to fit to `basin.geojson` (or fallback to `shapes/puget_basin.geojson`).
+- Leaflet uses Web Mercator (EPSG:3857), which matches the raster tile pyramid here.
+- Adjust min/max zoom in the small control panel to match the zooms you rendered (defaults to 8–12).
