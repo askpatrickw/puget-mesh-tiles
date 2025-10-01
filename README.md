@@ -3,6 +3,8 @@
 This repository builds and **publishes split ZIPs of offline raster map tiles** covering the **Puget Sound Basin** for **Meshcore / T-Deck** usage.
 Tiles are generated from OpenStreetMap extracts, clipped to the Basin polygon.
 
+![Puget Mesh Tiles Overview](docs/puget_mesh_tiles_overview.png)
+
 ---
 
 ## Quick start
