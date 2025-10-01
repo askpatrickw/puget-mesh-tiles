@@ -220,7 +220,8 @@ __marimo__/
 __MACOSX/
 .AppleDouble
 .LSOverride
-Icon[]
+Icon[
+]
 
 # Thumbnails
 ._*
@@ -382,3 +383,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Output folder when testing
+.artifacts/
+# Local glyph cache for offline rasterization
+glyphs/

@@ -1,0 +1,146 @@
+{
+  "version": 8,
+  "name": "Topo Major (Minimal)",
+  "sources": {
+    "vector": {
+      "type": "vector",
+      "url": "mbtiles://MBTILES_PATH"
+    }
+  },
+  "glyphs": "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#f7f6f2" }
+    },
+
+    { "id": "landcover-forest",
+      "type": "fill",
+      "source": "vector",
+      "source-layer": "landcover",
+      "minzoom": 9,
+      "filter": ["match", ["get", "class"], ["wood", "forest"], true, false],
+      "paint": { "fill-color": "#e6efe6", "fill-opacity": 0.6 }
+    },
+
+    { "id": "landuse-parks",
+      "type": "fill",
+      "source": "vector",
+      "source-layer": "landuse",
+      "minzoom": 9,
+      "filter": ["match", ["get", "class"], ["park", "protected_area", "nature_reserve", "national_park"], true, false],
+      "paint": { "fill-color": "#e8f3e8", "fill-opacity": 0.6 }
+    },
+
+    { "id": "water",
+      "type": "fill",
+      "source": "vector",
+      "source-layer": "water",
+      "paint": { "fill-color": "#a9c8e8" }
+    },
+
+    { "id": "waterway",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "waterway",
+      "minzoom": 10,
+      "filter": ["match", ["get", "class"], ["river", "canal", "stream"], true, false],
+      "paint": {
+        "line-color": "#8fb6db",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.3, 12, 0.8]
+      }
+    },
+
+    { "id": "roads-major",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "transportation",
+      "minzoom": 8,
+      "filter": ["match", ["get", "class"], ["motorway", "trunk", "primary"], true, false],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#cc7f66",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 10, 1.2, 12, 2.2]
+      }
+    },
+
+    { "id": "rail",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "transportation",
+      "minzoom": 10,
+      "filter": ["==", ["get", "class"], "rail"],
+      "paint": { "line-color": "#777", "line-width": 0.6 }
+    },
+
+    { "id": "boundary-country",
+      "type": "line",
+      "source": "vector",
+      "source-layer": "boundary",
+      "minzoom": 8,
+      "filter": ["all", ["==", ["get", "admin_level"], 2], ["!", ["get", "maritime"]]],
+      "paint": {
+        "line-color": "#9aa0a6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 12, 1.0],
+        "line-dasharray": [3, 2]
+      }
+    },
+
+    { "id": "peaks",
+      "type": "circle",
+      "source": "vector",
+      "source-layer": "mountain_peak",
+      "minzoom": 10,
+      "filter": ["<=", ["coalesce", ["get", "rank"], 999], 3],
+      "paint": {
+        "circle-color": "#665c52",
+        "circle-opacity": 0.9,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 1.2, 12, 2.0]
+      }
+    },
+
+    { "id": "peak-labels",
+      "type": "symbol",
+      "source": "vector",
+      "source-layer": "mountain_peak",
+      "minzoom": 11,
+      "filter": ["<=", ["coalesce", ["get", "rank"], 999], 3],
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+        "text-size": 10,
+        "text-font": ["Noto Sans Regular", "Open Sans Regular"],
+        "text-anchor": "top"
+      },
+      "paint": { "text-color": "#4a433b", "text-halo-color": "#f7f6f2", "text-halo-width": 1.0 }
+    },
+
+    { "id": "place-labels",
+      "type": "symbol",
+      "source": "vector",
+      "source-layer": "place",
+      "minzoom": 8,
+      "filter": ["match", ["get", "class"], ["city", "town"], true, false],
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 12, 13],
+        "text-font": ["Noto Sans Regular", "Open Sans Regular"],
+        "text-transform": "none"
+      },
+      "paint": { "text-color": "#2f3437", "text-halo-color": "#f7f6f2", "text-halo-width": 1.2 }
+    },
+
+    { "id": "airport-labels",
+      "type": "symbol",
+      "source": "vector",
+      "source-layer": "aerodrome_label",
+      "minzoom": 10,
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name"]],
+        "text-size": 10,
+        "text-font": ["Noto Sans Regular", "Open Sans Regular"]
+      },
+      "paint": { "text-color": "#40464b", "text-halo-color": "#f7f6f2", "text-halo-width": 1.0 }
+    }
+  ]
+}

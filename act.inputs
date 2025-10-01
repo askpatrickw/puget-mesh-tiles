@@ -1,0 +1,16 @@
+# Repository variables for local runs via `act`
+# Format: .env style key=value
+
+# Zoom levels (match workflow defaults)
+zoom_min=8
+zoom_max=12
+
+# Include British Columbia extract (true/false)
+include_bc=true
+
+# Buffer distance around basin polygon (km)
+basin_buffer_km=5
+
+# Paths and style
+data_dir=data
+style_json=styles/topo-major.json

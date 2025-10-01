@@ -8,6 +8,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
+const http = require('http');
+const { URL } = require('url');
 
 function getRenderFn() {
   const mod = require('mbgl-renderer');
@@ -48,7 +51,8 @@ function parseArgs() {
 }
 
 async function main() {
-  const { style, mbtiles, tilelist, outdir } = parseArgs();
+  const argv = parseArgs();
+  const { style, mbtiles, tilelist, outdir } = argv;
   if (!style || !mbtiles || !tilelist || !outdir) {
     console.error("Usage: --style <style.json> --mbtiles <vector.mbtiles> --tilelist <file> --outdir <dir>");
     process.exit(2);
@@ -56,6 +60,65 @@ async function main() {
   const absMbtiles = path.resolve(mbtiles);
   const tilePath = path.dirname(absMbtiles);
   const styleObj = loadStyleWithMbtilesBasename(style, absMbtiles);
+
+  // Optional override for glyphs: support a local static HTTP server for offline glyphs
+  const glyphsDir = argv['glyphs-dir'] || argv.glyphsDir || null;
+  const glyphsUrl = argv['glyphs-url'] || argv.glyphsUrl || argv.glyphs || null;
+  let glyphServer = null;
+  if (glyphsDir) {
+    const absGlyphs = path.resolve(glyphsDir);
+    let hasAnyPbf = false;
+    try {
+      const entries = fs.readdirSync(absGlyphs, { withFileTypes: true });
+      for (const ent of entries) {
+        if (ent.isDirectory()) {
+          const sub = fs.readdirSync(path.join(absGlyphs, ent.name));
+          if (sub.some(n => n.endsWith('.pbf'))) { hasAnyPbf = true; break; }
+        }
+      }
+    } catch (_) { /* ignore */ }
+    if (hasAnyPbf) {
+      // Start a tiny HTTP server to serve glyph PBFs from absGlyphs
+      glyphServer = await new Promise((resolve) => {
+        const srv = http.createServer((req, res) => {
+          try {
+            const u = new URL(req.url, 'http://localhost');
+            // Expected path: /{fontstack}/{range}.pbf
+            const parts = u.pathname.split('/').filter(Boolean);
+            if (parts.length !== 2) {
+              res.statusCode = 404; res.end('Not found'); return;
+            }
+            const fontstack = decodeURIComponent(parts[0]);
+            const range = parts[1];
+
+            // Try exact stack, else fall back to first available single stack in the list
+            const tryStacks = [fontstack, ...fontstack.split(',')].map(s => s.trim()).filter(Boolean);
+            let filePath = null;
+            for (const s of tryStacks) {
+              const candidate = path.join(absGlyphs, s, range);
+              const safe = path.normalize(candidate);
+              if (!safe.startsWith(absGlyphs)) continue; // prevent traversal
+              if (fs.existsSync(safe)) { filePath = safe; break; }
+            }
+            if (!filePath) {
+              res.statusCode = 404; res.end('Not found'); return;
+            }
+            res.setHeader('Content-Type', 'application/x-protobuf');
+            fs.createReadStream(filePath).pipe(res);
+          } catch (e) {
+            res.statusCode = 500; res.end('Server error');
+          }
+        });
+        srv.listen(0, '127.0.0.1', () => resolve(srv));
+      });
+      const port = glyphServer.address().port;
+      styleObj.glyphs = `http://127.0.0.1:${port}/{fontstack}/{range}.pbf`;
+    } else {
+      console.warn(`Glyphs dir '${glyphsDir}' has no .pbf files; keeping style glyphs as-is.`);
+    }
+  } else if (glyphsUrl) {
+    styleObj.glyphs = glyphsUrl;
+  }
 
   const lines = fs.readFileSync(tilelist, 'utf8').trim().split(/\r?\n/);
   if (lines.length === 0) {
@@ -86,6 +149,9 @@ async function main() {
     if ((idx+1) % 500 === 0) console.log(`Rendered ${idx+1} / ${lines.length} tiles...`);
   }
   console.log(`Done. Wrote ${lines.length} tiles to ${outdir}`);
+  if (glyphServer) {
+    try { glyphServer.close(); } catch (_) { /* ignore */ }
+  }
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

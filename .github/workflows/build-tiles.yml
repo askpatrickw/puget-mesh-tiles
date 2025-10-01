@@ -5,8 +5,9 @@ on:
     inputs:
       zoom_min: { description: "Minimum zoom", required: false, default: "8" }
       zoom_max: { description: "Maximum zoom", required: false, default: "12" }
-      include_bc: { description: "Include British Columbia PBF", required: false, default: "false" }
-      basin_buffer_km: { description: "Buffer around Basin polygon (km)", required: false, default: "10" }
+      include_bc: { description: "Include British Columbia PBF", required: false, default: "true" }
+      basin_buffer_km: { description: "Buffer around Basin polygon (km)", required: false, default: "5" }
+      style_json: { description: "Map style JSON", required: false, default: "styles/topo-major.json" }
   schedule:
     - cron: "0 16 1 * *" # 08:00 PT monthly
 
@@ -16,16 +17,29 @@ permissions:
 env:
   ZOOM_MIN: ${{ inputs.zoom_min || '8' }}
   ZOOM_MAX: ${{ inputs.zoom_max || '12' }}
-  INCLUDE_BC: ${{ inputs.include_bc || 'false' }}
-  BASIN_BUFFER_KM: ${{ inputs.basin_buffer_km || '10' }}
+  INCLUDE_BC: ${{ inputs.include_bc || 'true' }}
+  BASIN_BUFFER_KM: ${{ inputs.basin_buffer_km || '5' }}
   DATA_DIR: data
-  STYLE_JSON: styles/bright-min.json
+  STYLE_JSON: ${{ inputs.style_json || 'styles/topo-major.json' }}
+  GLYPHS_DIR: glyphs
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360  # 6h on hosted runners
     steps:
+      - name: Log environment variables
+        run: |
+          echo "::group::Workflow inputs"
+          echo "zoom_min=${{ inputs.zoom_min }}"
+          echo "zoom_max=${{ inputs.zoom_max }}"
+          echo "include_bc=${{ inputs.include_bc }}"
+          echo "basin_buffer_km=${{ inputs.basin_buffer_km }}"
+          echo "style_json=${{ inputs.style_json }}"
+          echo "::endgroup::"
+          echo "::group::Environment variables"
+          env | sort
+          echo "::endgroup::"
       - uses: actions/checkout@v4
 
       - name: Set up Python
@@ -125,6 +139,18 @@ jobs:
         run: |
           python scripts/compute_tiles.py --geom basin.geojson --zmin ${ZOOM_MIN} --zmax ${ZOOM_MAX} --prefix tilelist
 
+      - name: Cache glyphs
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GLYPHS_DIR }}
+          key: glyphs-${{ hashFiles(inputs.style_json || 'styles/bright-min.json') }}-v1
+          restore-keys: |
+            glyphs-
+
+      - name: Fetch glyphs (if missing)
+        run: |
+          node scripts/fetch_glyphs.js --style ${STYLE_JSON} --out ${GLYPHS_DIR} --base https://fonts.openmaptiles.org --ranges "0-255,256-511,512-767,768-1023"
+
       - name: Rasterize tiles
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
@@ -133,7 +159,8 @@ jobs:
             --style ${STYLE_JSON} \
             --mbtiles tiles/vector.mbtiles \
             --tilelist tilelist_all.txt \
-            --outdir tiles
+            --outdir tiles \
+            --glyphs-dir ${GLYPHS_DIR}
 
       - name: Package and split
         run: |

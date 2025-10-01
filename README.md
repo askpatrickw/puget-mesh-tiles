@@ -1,32 +1,32 @@
 # Puget Mesh — Offline Map Tiles
 
-This repository builds and **publishes split ZIPs of offline raster map tiles** covering the **Puget Sound Basin** for **Meshcore / T-Deck** usage.  
+This repository builds and **publishes split ZIPs of offline raster map tiles** covering the **Puget Sound Basin** for **Meshcore / T-Deck** usage.
 Tiles are generated from OpenStreetMap extracts, clipped to the Basin polygon.
 
 ---
 
 ## Quick start
 
-1. Commit your Basin polygon to `./shapes/puget_basin.geojson`.  
-   - Format: GeoJSON, WGS84 (EPSG:4326).  
-   - Shapefile (`.shp` + sidecars) also supported if you prefer, but GeoJSON is leaner.  
-2. Push this repo to GitHub.  
-3. Run the **build-tiles** workflow (manually or on schedule).  
-4. Download split ZIPs from the Release, extract to a microSD so you have `tiles/{z}/{x}/{y}.png` at the SD root.  
+1. Commit your Basin polygon to `./shapes/puget_basin.geojson`.
+   - Format: GeoJSON, WGS84 (EPSG:4326).
+   - Shapefile (`.shp` + sidecars) also supported if you prefer, but GeoJSON is leaner.
+2. Push this repo to GitHub.
+3. Run the **build-tiles** workflow (manually or on schedule).
+4. Download split ZIPs from the Release, extract to a microSD so you have `tiles/{z}/{x}/{y}.png` at the SD root.
 5. Insert into T-Deck; Meshcore will pick up the `tiles/` folder automatically.
 
 ---
 
 ## Defaults
 
-- **Area**: Puget Sound Basin polygon from `./shapes/puget_basin.geojson` (+10 km buffer).  
-- **Sources**:  
-  - OSM extracts from Geofabrik:  
-    - Washington (always)  
-    - British Columbia (optional, toggle `INCLUDE_BC=true`)  
-- **Clipping**: `osmium extract` trims WA+BC to the Basin polygon (`puget_basin.osm.pbf`).  
-- **Tile builder**: Planetiler → vector MBTiles → raster tiles with `mbgl-renderer`.  
-- **Zooms**: `z8–12` (regional through city-level).  
+- **Area**: Puget Sound Basin polygon from `./shapes/puget_basin.geojson` (+10 km buffer).
+- **Sources**:
+  - OSM extracts from Geofabrik:
+    - Washington (always)
+    - British Columbia (optional, toggle `INCLUDE_BC=true`)
+- **Clipping**: `osmium extract` trims WA+BC to the Basin polygon (`puget_basin.osm.pbf`).
+- **Tile builder**: Planetiler → vector MBTiles → raster tiles with `mbgl-renderer`.
+- **Zooms**: `z8–12` (regional through city-level).
 - **Packaging**: split ZIPs (`zip -s 2000m`) + `SHA256SUMS` → Release assets.
 
 ---
@@ -44,19 +44,20 @@ shapes/
   puget_basin.geojson               # Committed Puget Basin polygon (required)
 styles/
   bright-min.json                   # Minimal MapLibre style; points to local vector MBTiles
+  topo-major.json                   # Slightly richer style focused on major features
+act.inputs                          # Example ACT input file (zoom, style, etc.)
 README.md                           # You are here
 ```
-
 
 ---
 
 ## Workflow overview
 
-1. **Load local basin polygon** (`./shapes/puget_basin.geojson`) → `basin.geojson`.  
-2. **Download OSM extracts** (WA + optional BC).  
-3. **Merge + clip** with `osmium extract` to produce `puget_basin.osm.pbf`.  
-4. **Planetiler** converts PBF → `tiles/vector.mbtiles`.  
-5. **Rasterize** selected tiles → `tiles/{z}/{x}/{y}.png`.  
+1. **Load local basin polygon** (`./shapes/puget_basin.geojson`) → `basin.geojson`.
+2. **Download OSM extracts** (WA + optional BC).
+3. **Merge + clip** with `osmium extract` to produce `puget_basin.osm.pbf`.
+4. **Planetiler** converts PBF → `tiles/vector.mbtiles`.
+5. **Rasterize** selected tiles → `tiles/{z}/{x}/{y}.png`.
 6. **Package** split ZIPs + checksums → uploaded to the Release.
 
 ---
@@ -86,10 +87,56 @@ flowchart TD
 
 Override via workflow **inputs** or repository **variables**:
 
-- `ZOOM_MIN` / `ZOOM_MAX` (default: 8 / 12)  
-- `BASIN_BUFFER_KM` (default: 10)  
-- `INCLUDE_BC` (default: false)  
-- `STYLE_JSON` (default: `styles/bright-min.json`)  
+- `ZOOM_MIN` / `ZOOM_MAX` (default: 8 / 12)
+- `BASIN_BUFFER_KM` (default: 10)
+- `INCLUDE_BC` (default: false)
+- `STYLE_JSON` (default: `styles/bright-min.json`)
+
+---
+
+## Run with ACT (local CI)
+
+You can run the same GitHub workflow locally using ACT (Docker required). This is the easiest way to exercise the full pipeline end‑to‑end without pushing to GitHub.
+
+Prerequisites:
+
+- Docker running
+- ACT installed (`brew install act` on macOS)
+
+Option A — use the provided inputs file:
+
+```cli
+act workflow_dispatch \
+  -W .github/workflows/build-tiles.yml \
+  -j build \
+  --input-file act.inputs \
+  -P ubuntu-22.04=catthehacker/ubuntu:act-22.04 \
+  --artifact-server-path .artifacts
+```
+
+Edit `act.inputs` to tweak zooms, buffer distance, or style.
+
+Option B — specify inputs inline:
+
+```cli
+act workflow_dispatch \
+  -W .github/workflows/build-tiles.yml \
+  -j build \
+  --input zoom_min=8 \
+  --input zoom_max=12 \
+  --input include_bc=false \
+  --input basin_buffer_km=10 \
+  --input style_json=styles/bright-min.json \
+  -P ubuntu-22.04=catthehacker/ubuntu:act-22.04 \
+  --artifact-server-path .artifacts
+```
+
+Notes:
+
+- Outputs are written to `RELEASE_ASSETS/puget-mesh-tiles/` in your workspace; the `--artifact-server-path` also captures uploaded artifacts under `.artifacts/`.
+- On Apple Silicon, add `--container-architecture linux/amd64` if you hit image compatibility issues.
+- The release step runs only for tag refs; when testing locally, you can ignore it or pass `-s GITHUB_TOKEN=<token>` if you want to exercise it.
+- Use `act -l` to list workflows and `act -n` for a dry run.
 
 ---
 
