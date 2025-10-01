@@ -29,6 +29,7 @@
       <label>Min zoom <input id="minz" type="number" min="0" max="22" value="8" style="width:4em"></label>
       <label>Max zoom <input id="maxz" type="number" min="0" max="22" value="12" style="width:4em"></label>
       <button id="apply">Apply</button>
+      <label style="margin-left:8px"><input id="basinToggle" type="checkbox" checked> Basin overlay</label>
       <span style="margin-left:8px; color:#666">Tiles path: <code>../tiles/{z}/{x}/{y}.png</code></span>
     </div>
     <div class="coords" id="coords">&nbsp;</div>
@@ -54,21 +55,43 @@
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(map);
 
-      // Fit to basin.geojson if available, else puget_basin.geojson
-      async function fitToBasin() {
+      // Basin overlay: load basin.geojson or fallback to shapes/puget_basin.geojson
+      let basinLayer = null;
+      const basinStyle = {
+        color: '#1f78b4',
+        weight: 2,
+        opacity: 0.9,
+        fillColor: '#1f78b4',
+        fillOpacity: 0.06
+      };
+
+      async function loadAndShowBasin() {
         const candidates = ['../basin.geojson', '../shapes/puget_basin.geojson'];
         for (const url of candidates) {
           try {
             const res = await fetch(url);
             if (!res.ok) continue;
             const gj = await res.json();
-            const g = L.geoJSON(gj);
-            const b = g.getBounds();
-            if (b.isValid()) { map.fitBounds(b.pad(0.05)); return; }
-          } catch (e) { /* try next */ }
+            // Create or replace the layer
+            if (basinLayer) {
+              map.removeLayer(basinLayer);
+            }
+            basinLayer = L.geoJSON(gj, { style: basinStyle });
+            // Fit bounds and add if toggle is on
+            const b = basinLayer.getBounds();
+            if (b && b.isValid()) {
+              map.fitBounds(b.pad(0.05));
+            }
+            if (document.getElementById('basinToggle').checked) {
+              basinLayer.addTo(map);
+            }
+            return; // done
+          } catch (e) {
+            // try next
+          }
         }
       }
-      fitToBasin();
+      loadAndShowBasin();
 
       // Allow adjusting zoom bounds at runtime
       const minzEl = document.getElementById('minz');
@@ -84,6 +107,17 @@
         }).addTo(map);
       });
 
+      // Toggle basin overlay visibility
+      const basinToggle = document.getElementById('basinToggle');
+      basinToggle.addEventListener('change', () => {
+        if (!basinLayer) return;
+        if (basinToggle.checked) {
+          basinLayer.addTo(map);
+        } else {
+          map.removeLayer(basinLayer);
+        }
+      });
+
       // Show mouse coords
       const coordsEl = document.getElementById('coords');
       map.on('mousemove', (e) => {
@@ -92,4 +126,3 @@
     </script>
   </body>
   </html>
-
