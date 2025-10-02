@@ -32,6 +32,14 @@ function tileBBox(z, x, y) {
   return [lonLeft, latBottom, lonRight, latTop];
 }
 
+function tileCenter(z, x, y) {
+  const [w, s, e, n] = tileBBox(z, x, y);
+  return [
+    (w + e) / 2,
+    (s + n) / 2
+  ];
+}
+
 function loadStyleWithMbtilesBasename(styleJsonPath, mbtilesAbsPath) {
   const styleJson = JSON.parse(fs.readFileSync(styleJsonPath, 'utf8'));
   // mbgl-renderer expects service name (without .mbtiles) in URLs like mbtiles://<service>
@@ -130,9 +138,10 @@ async function main() {
   let renderFn;
   try {
     renderFn = getRenderFn();
-    // Probe one tile by rendering a 256x256 image for that tile's bounds
-    const bounds = tileBBox(pz, px, py);
-    await Promise.resolve(renderFn(styleObj, 256, 256, { bounds, ratio: 1, tilePath }));
+    // Probe one tile: render by center+zoom (z-1) to avoid seams between tiles
+    const center = tileCenter(pz, px, py);
+    const zoom = Math.max(pz - 1, 0);
+    await Promise.resolve(renderFn(styleObj, 256, 256, { center, zoom, ratio: 1, tilePath }));
   } catch (e) {
     console.error('Renderer initialization failed:', e && e.message ? e.message : e);
     process.exit(1);
@@ -141,8 +150,10 @@ async function main() {
   for (const [idx, line] of lines.entries()) {
     if (!line.trim()) continue;
     const [z,x,y] = line.split(',').map(s => parseInt(s, 10));
-    const bounds = tileBBox(z, x, y);
-    const png = await Promise.resolve(renderFn(styleObj, 256, 256, { bounds, ratio: 1, tilePath }));
+    // Render this tile using exact center & zoom = z-1 to match XYZ tile edges
+    const center = tileCenter(z, x, y);
+    const zoom = Math.max(z - 1, 0);
+    const png = await Promise.resolve(renderFn(styleObj, 256, 256, { center, zoom, ratio: 1, tilePath }));
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);
