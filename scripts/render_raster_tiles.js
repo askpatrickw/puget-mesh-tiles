@@ -11,6 +11,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const http = require('http');
 const { URL } = require('url');
+const sharp = require('sharp');
 
 function getRenderFn() {
   const mod = require('mbgl-renderer');
@@ -68,6 +69,11 @@ async function main() {
   const absMbtiles = path.resolve(mbtiles);
   const tilePath = path.dirname(absMbtiles);
   const styleObj = loadStyleWithMbtilesBasename(style, absMbtiles);
+
+  // Tile render geometry
+  const tileSize = parseInt(argv['tile-size'] || argv.tileSize || '256', 10);
+  const labelBuffer = parseInt(argv['label-buffer'] || argv.labelBuffer || '64', 10);
+  const canvasSize = tileSize + 2 * Math.max(0, labelBuffer);
 
   // Optional override for glyphs: support a local static HTTP server for offline glyphs
   const glyphsDir = argv['glyphs-dir'] || argv.glyphsDir || null;
@@ -141,7 +147,7 @@ async function main() {
     // Probe one tile: render by center+zoom (z-1) to avoid seams between tiles
     const center = tileCenter(pz, px, py);
     const zoom = Math.max(pz - 1, 0);
-    await Promise.resolve(renderFn(styleObj, 256, 256, { center, zoom, ratio: 1, tilePath }));
+    await Promise.resolve(renderFn(styleObj, canvasSize, canvasSize, { center, zoom, ratio: 1, tilePath }));
   } catch (e) {
     console.error('Renderer initialization failed:', e && e.message ? e.message : e);
     process.exit(1);
@@ -153,7 +159,23 @@ async function main() {
     // Render this tile using exact center & zoom = z-1 to match XYZ tile edges
     const center = tileCenter(z, x, y);
     const zoom = Math.max(z - 1, 0);
-    const png = await Promise.resolve(renderFn(styleObj, 256, 256, { center, zoom, ratio: 1, tilePath }));
+    const fullPng = await Promise.resolve(renderFn(styleObj, canvasSize, canvasSize, { center, zoom, ratio: 1, tilePath }));
+
+    // Center-crop to the requested tile size so layout stays 256×256 (or tileSize)
+    let png;
+    if (labelBuffer > 0 || canvasSize !== tileSize) {
+      try {
+        png = await sharp(fullPng)
+          .extract({ left: Math.max(0, labelBuffer), top: Math.max(0, labelBuffer), width: tileSize, height: tileSize })
+          .png()
+          .toBuffer();
+      } catch (cropErr) {
+        console.error('Crop failed; writing uncropped tile:', cropErr && cropErr.message ? cropErr.message : cropErr);
+        png = fullPng;
+      }
+    } else {
+      png = fullPng;
+    }
     const dir = path.join(outdir, String(z), String(x));
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${y}.png`), png);

@@ -173,7 +173,14 @@ java -Xmx8g -jar planetiler.jar --download=true --osm-path=data/puget_basin.osm.
 python3 scripts/compute_tiles.py --geom basin.geojson --zmin 8 --zmax 12 --prefix tilelist
 
 # 5. Rasterize tiles
-node scripts/render_raster_tiles.js --style styles/bright-min.json --mbtiles tiles/vector.mbtiles --tilelist tilelist_all.txt --outdir tiles
+#   Tip: add --label-buffer to prevent truncated labels near tile edges.
+#        This over‑renders with a margin and center‑crops back to 256 px.
+node scripts/render_raster_tiles.js \
+  --style styles/bright-min.json \
+  --mbtiles tiles/vector.mbtiles \
+  --tilelist tilelist_all.txt \
+  --outdir tiles \
+  --label-buffer 64
 
 # 6. Package
 bash scripts/package_and_split.sh tiles RELEASE_ASSETS/test
